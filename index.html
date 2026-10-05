@@ -107,164 +107,20 @@ footer{margin-top:auto;padding:25px 20px 32px;text-align:center;color:#3f4959;fo
 </div>
 <script>
 const API="https://counterapi.com/api/globalclickerbychagpt/click/global";
-const READ=API+"?readOnly=true";
-const counter=document.getElementById("counter");
-const button=document.getElementById("clickButton");
-const clickZone=document.getElementById("clickZone");
-const sessionEl=document.getElementById("session");
-const rateEl=document.getElementById("rate");
-const growthEl=document.getElementById("growth");
-const savedEl=document.getElementById("saved");
-const delta=document.getElementById("delta");
-const syncText=document.getElementById("syncText");
-const connectionText=document.getElementById("connectionText");
-const dot=document.getElementById("dot");
-const toast=document.getElementById("toast");
-
-let serverTotal=0;
-let displayTotal=0;
-let pending=0;
-let session=Number(localStorage.getItem("globalclicker-session")||0);
-let clickTimes=[];
-let worldSamples=[];
-let syncing=false;
-let pollTimer=0;
-
+const counter=document.getElementById("counter"),button=document.getElementById("clickButton"),sessionEl=document.getElementById("session"),rateEl=document.getElementById("rate"),growthEl=document.getElementById("growth"),savedEl=document.getElementById("saved"),delta=document.getElementById("delta"),syncText=document.getElementById("syncText"),connectionText=document.getElementById("connectionText"),dot=document.getElementById("dot"),toast=document.getElementById("toast");
+let serverTotal=0,pending=0,session=Number(localStorage.getItem("globalclicker-session")||0),times=[],samples=[],busy=false;
 sessionEl.textContent=session.toLocaleString("en-US");
-
-function number(n){return Math.max(0,Math.floor(n)).toLocaleString("en-US")}
-function render(value,animate=true){
-  value=Math.max(0,Math.floor(value));
-  displayTotal=value;
-  counter.textContent=number(value);
-  if(animate){
-    counter.classList.remove("bump");
-    void counter.offsetWidth;
-    counter.classList.add("bump");
-  }
-}
-function setConnection(state){
-  connectionText.textContent=state;
-  dot.className="dot"+(state==="OFFLINE"?" off":state==="SYNCING"?" warn":"");
-}
-function showDelta(n){
-  delta.textContent="+"+number(n);
-  delta.classList.remove("show");
-  void delta.offsetWidth;
-  delta.classList.add("show");
-}
-function showToast(text){
-  toast.textContent=text;
-  toast.classList.remove("show");
-  void toast.offsetWidth;
-  toast.classList.add("show");
-}
-function burst(x,y){
-  const f=document.createElement("div");
-  f.className="float";
-  f.textContent="+1";
-  f.style.left=x+"px";
-  f.style.top=y+"px";
-  f.style.setProperty("--x",(Math.random()*34-17)+"px");
-  document.body.appendChild(f);
-  setTimeout(()=>f.remove(),820);
-  for(let i=0;i<7;i++){
-    const s=document.createElement("div");
-    s.className="spark";
-    s.style.left=x+"px";
-    s.style.top=y+"px";
-    const a=Math.random()*Math.PI*2;
-    const d=35+Math.random()*75;
-    s.style.setProperty("--dx",Math.cos(a)*d+"px");
-    s.style.setProperty("--dy",Math.sin(a)*d+"px");
-    document.body.appendChild(s);
-    setTimeout(()=>s.remove(),700);
-  }
-}
-function optimisticClick(e){
-  pending++;
-  session++;
-  sessionEl.textContent=number(session);
-  localStorage.setItem("globalclicker-session",String(session));
-  render(serverTotal+pending,true);
-  showDelta(1);
-  showToast("Your click joined the world.");
-  const r=button.getBoundingClientRect();
-  burst(e.clientX||r.left+r.width/2,e.clientY||r.top+r.height/2);
-  flush();
-}
-async function flush(){
-  if(syncing||pending<1)return;
-  syncing=true;
-  setConnection("SYNCING");
-  while(pending>0){
-    pending--;
-    try{
-      const res=await fetch(API,{method:"GET",cache:"no-store"});
-      if(!res.ok)throw new Error("counter");
-      const data=await res.json();
-      if(typeof data.value!=="number")throw new Error("value");
-      serverTotal=Math.floor(data.value);
-      savedEl.textContent=number(serverTotal);
-      render(serverTotal+pending,true);
-    }catch(err){
-      pending++;
-      render(serverTotal+pending,true);
-      setConnection("RETRYING");
-      syncText.textContent="Connection interrupted · retrying";
-      break;
-    }
-  }
-  syncing=false;
-  if(pending>0){
-    setTimeout(flush,650);
-  }else{
-    setConnection("LIVE");
-    syncText.textContent="Synced with the global counter";
-  }
-}
-async function readWorld(){
-  try{
-    const res=await fetch(READ,{method:"GET",cache:"no-store"});
-    if(!res.ok)throw new Error("read");
-    const data=await res.json();
-    if(typeof data.value!=="number")throw new Error("value");
-    const next=Math.floor(data.value);
-    const previous=serverTotal;
-    serverTotal=next;
-    worldSamples.push({t:Date.now(),v:next});
-    const cutoff=Date.now()-60000;
-    worldSamples=worldSamples.filter(x=>x.t>=cutoff);
-    const first=worldSamples[0];
-    const growth=first?Math.max(0,Math.round((next-first.v)*60000/Math.max(1,Date.now()-first.t))):0;
-    growthEl.textContent=number(growth);
-    if(!syncing){
-      render(serverTotal+pending,next!==previous);
-      savedEl.textContent=number(serverTotal);
-    }
-    syncText.textContent=pending?"Syncing your clicks...":"Synced with the global counter";
-    setConnection("LIVE");
-  }catch(err){
-    if(!syncing)setConnection("OFFLINE");
-  }
-}
-button.addEventListener("click",optimisticClick);
-button.addEventListener("keydown",e=>{
-  if(e.key===" "||e.key==="Enter")e.preventDefault();
-});
-setInterval(()=>{
-  const now=Date.now();
-  clickTimes=clickTimes.filter(t=>now-t<60000);
-  rateEl.textContent=number(clickTimes.length);
-},1000);
-const originalOptimistic=optimisticClick;
-button.removeEventListener("click",optimisticClick);
-button.addEventListener("click",e=>{
-  clickTimes.push(Date.now());
-  originalOptimistic(e);
-});
-readWorld();
-pollTimer=setInterval(readWorld,1500);
+function num(n){return Math.max(0,Math.floor(n)).toLocaleString("en-US")}
+function render(n,b=true){counter.textContent=num(n);if(b){counter.classList.remove("bump");void counter.offsetWidth;counter.classList.add("bump")}}
+function status(s){connectionText.textContent=s;dot.className="dot"+(s==="OFFLINE"?" off":s==="SYNCING"?" warn":"")}
+function jsonp(url){return new Promise((resolve,reject)=>{const cb="gc"+Date.now()+Math.random().toString(36).slice(2),s=document.createElement("script"),t=setTimeout(()=>done(new Error("timeout")),10000);function done(e,d){clearTimeout(t);s.remove();try{delete window[cb]}catch(_){}e?reject(e):resolve(d)}window[cb]=d=>done(null,d);s.onerror=()=>done(new Error("network"));s.src=url+(url.includes("?")?"&":"?")+"callback="+cb+"&_="+Date.now();document.head.appendChild(s)})}
+function fx(x,y){const f=document.createElement("div");f.className="float";f.textContent="+1";f.style.left=x+"px";f.style.top=y+"px";f.style.setProperty("--x",(Math.random()*34-17)+"px");document.body.appendChild(f);setTimeout(()=>f.remove(),820);for(let i=0;i<7;i++){const s=document.createElement("div");s.className="spark";s.style.left=x+"px";s.style.top=y+"px";const a=Math.random()*6.28,d=35+Math.random()*75;s.style.setProperty("--dx",Math.cos(a)*d+"px");s.style.setProperty("--dy",Math.sin(a)*d+"px");document.body.appendChild(s);setTimeout(()=>s.remove(),700)}}
+function ui(){delta.textContent="+1";delta.classList.remove("show");void delta.offsetWidth;delta.classList.add("show");toast.textContent="Your click joined the world.";toast.classList.remove("show");void toast.offsetWidth;toast.classList.add("show")}
+async function syncClick(){if(busy)return;busy=true;status("SYNCING");try{const d=await jsonp(API);if(typeof d.value!=="number")throw Error();serverTotal=Math.floor(d.value);pending=Math.max(0,pending-1);savedEl.textContent=num(serverTotal);render(serverTotal+pending,true);syncText.textContent=pending?"Syncing your clicks...":"Synced with the global counter";status("LIVE")}catch(e){status("OFFLINE");syncText.textContent="Connection failed · retrying";setTimeout(()=>{busy=false;syncClick()},1200);return}busy=false;if(pending)syncClick()}
+async function read(){try{const d=await jsonp(API+"&readOnly=true");if(typeof d.value!=="number")throw Error();const n=Math.floor(d.value);serverTotal=n;samples.push({t:Date.now(),v:n});samples=samples.filter(x=>Date.now()-x.t<60000);const q=samples[0];growthEl.textContent=num(q?Math.max(0,Math.round((n-q.v)*60000/Math.max(1000,Date.now()-q.t))):0);if(!busy)render(serverTotal+pending,n!==serverTotal);savedEl.textContent=num(serverTotal);syncText.textContent=pending?"Syncing your clicks...":"Synced with the global counter";status("LIVE")}catch(e){if(!busy)status("OFFLINE")}}
+button.addEventListener("click",e=>{pending++;session++;times.push(Date.now());localStorage.setItem("globalclicker-session",session);sessionEl.textContent=num(session);render(serverTotal+pending,true);ui();const r=button.getBoundingClientRect();fx(e.clientX||r.left+r.width/2,e.clientY||r.top+r.height/2);syncClick()});
+setInterval(()=>{const n=Date.now();times=times.filter(t=>n-t<60000);rateEl.textContent=num(times.length)},1000);
+read();setInterval(read,2000);
 </script>
 </body>
 </html>
