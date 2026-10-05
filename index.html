@@ -197,31 +197,30 @@ async function flush(){
   if(syncing||pending<1)return;
   syncing=true;
   setConnection("SYNCING");
-  const amount=pending;
-  pending=0;
-  let ok=false;
-  try{
-    for(let i=0;i<amount;i++){
+  while(pending>0){
+    pending--;
+    try{
       const res=await fetch(API,{method:"GET",cache:"no-store"});
       if(!res.ok)throw new Error("counter");
       const data=await res.json();
-      if(typeof data.value==="number")serverTotal=data.value;
+      if(typeof data.value!=="number")throw new Error("value");
+      serverTotal=Math.floor(data.value);
       savedEl.textContent=number(serverTotal);
-      render(serverTotal+(pending),true);
-      ok=true;
+      render(serverTotal+pending,true);
+    }catch(err){
+      pending++;
+      render(serverTotal+pending,true);
+      setConnection("RETRYING");
+      syncText.textContent="Connection interrupted · retrying";
+      break;
     }
-  }catch(err){
-    pending+=amount;
-    render(serverTotal+pending,true);
-    setConnection("RETRYING");
-    syncText.textContent="Connection interrupted · retrying";
-  }finally{
-    syncing=false;
-    if(ok){
-      setConnection("LIVE");
-      syncText.textContent="Synced with the global counter";
-    }
-    if(pending>0)setTimeout(flush,650);
+  }
+  syncing=false;
+  if(pending>0){
+    setTimeout(flush,650);
+  }else{
+    setConnection("LIVE");
+    syncText.textContent="Synced with the global counter";
   }
 }
 async function readWorld(){
